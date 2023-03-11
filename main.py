@@ -13,6 +13,7 @@ def database_init():
         user_id INTEGER PRIMARY KEY,
         user_name TEXT DEFAULT User,
         author_perm BOOL DEFAULT False
+        mod_perm BOOL DEFAULT False
         );""")
     con.execute("""CREATE TABLE book (
         book_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
