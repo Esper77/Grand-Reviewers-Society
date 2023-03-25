@@ -7,6 +7,52 @@ import telebot
 from telebot import types
 
 
+class BookLibrary:
+    def __init__(self, conn):
+        self._conn = conn
+
+    def get_ids(self):
+        self._conn.execute("SELECT book_id FROM book")
+
+
+class ReviewLibrary:
+    def __init__(self, conn):
+        self._conn = conn
+
+    def add(self, user_id, book_id):
+        self._conn.execute('INSERT INTO review (user_id, user_name) values (?, ?)', user_id, book_id)
+
+    def get_ids(self, is_closed=None):
+        if is_closed is None:
+            return self._conn.execute("SELECT book_id, user_id FROM review")
+        else:
+            return self._conn.execute("SELECT book_id, user_id FROM review WHERE is_closed = ?", (is_closed, ))
+
+
+class UserLibrary:
+    def __init__(self, conn):
+        self._conn = conn
+
+    def ids(self, is_banned=None):
+        if is_banned is None:
+            return [x[0] for x in self._conn.execute("SELECT user_id FROM user")]
+        else:
+            return [x[0] for x in self._conn.execute("SELECT user_id FROM user WHERE is_banned = ?", (is_banned, ))]
+
+    def add_id(self, user_id):
+        return self._conn.execute('INSERT INTO user (user_id, user_name) values (?, ?)', (user_id, "User"))
+
+
+def with_connection(func):
+    def wrapper(*args):
+        conn = get_connection()
+        func(conn, *args)
+        conn.commit()
+        conn.close()
+
+    return wrapper
+
+
 def database_init():
     con = sl.connect("application.db")
     con.execute("""CREATE TABLE user (
@@ -25,10 +71,13 @@ def database_init():
         book_id INTEGER NOT NULL,
         user_id INTEGER NOT NULL,
         content TEXT,
+        is_closed BOOL NOT NULL DEFAULT False,
         approved BOOL DEFAULT False
         );""")
     con.execute("INSERT INTO book (book_name, author_id) values (?, ?)", ("Над пропастью во ржи", "NO"))
     con.commit()
+
+
 # database_init()
 
 
@@ -38,30 +87,39 @@ bot = telebot.TeleBot(token=TOKEN)
 
 @bot.message_handler(commands=["start"])  # This is a start module
 def start(message):
-    con = sl.connect("application.db")
-    chat_id = message.chat.id
-    if chat_id not in [x[0] for x in con.execute("SELECT user_id FROM user")]:
+    init_user(message.chat.id)
+
+
+@with_connection
+def init_user(con, chat_id):
+    if chat_id not in UserLibrary(con).ids():
         print("Added")
         con.execute('INSERT INTO user (user_id, user_name) values (?, ?)', (chat_id, "User"))
-        con.commit()
 
 
-@bot.message_handler(commands=["force"])
+@bot.message_handler(commands=["force"])  # This is a forced mailing module for debug
 def forced_mailing(message):
     mailing_send()
 
+
 # Blacklist mode needed here
 
-
+"""
 @bot.message_handler(commands=["add-book"])
 def book_add(message):
     con = sl.connect("application.db")
     chat_id = message.chat.id
+"""
 
 
-def mailing_send():  # Mailing module
-    con = sl.connect("application.db")
-    users_data = [user_info[0] for user_info in con.execute("SELECT user_id FROM user WHERE NOT is_banned")]
+def get_connection():
+    return sl.connect("application.db")
+
+
+@with_connection
+def mailing_send(con):  # Mailing module
+    library = UserLibrary(con)
+    users_data = library.ids(is_banned=False)
     books_data = [book for book in con.execute("SELECT book_id, book_name FROM book")]
     for user_info in users_data:
         keyboard = types.InlineKeyboardMarkup()
@@ -73,6 +131,17 @@ def mailing_send():  # Mailing module
             button1 = types.InlineKeyboardButton(text=f"{book[1]}", callback_data=book[0])
             keyboard.add(button1)
         bot.send_message(user_info, "Выберите книгу", reply_markup=keyboard)
+
+
+@bot.callback_query_handler(func=lambda call: True)
+@with_connection
+def callback_operating(con, call):
+    library = ReviewLibrary(con)
+    callback = call.data
+    chat_id = call.message.chat.id
+    if callback not in BookLibrary(con).get_ids:
+        if (callback, chat_id) not in library.get_ids():
+            pass
 
 
 def mailing_check():
