@@ -12,7 +12,7 @@ class BookLibrary:
         self._conn = conn
 
     def get_ids(self):
-        self._conn.execute("SELECT book_id FROM book")
+        return self._conn.execute("SELECT book_id FROM book")
 
 
 class ReviewLibrary:
@@ -20,13 +20,16 @@ class ReviewLibrary:
         self._conn = conn
 
     def add(self, user_id, book_id):
-        self._conn.execute('INSERT INTO review (user_id, user_name) values (?, ?)', user_id, book_id)
+        self._conn.execute('INSERT INTO review (user_id, book_id) values (?, ?)', (user_id, book_id))
 
     def get_ids(self, is_closed=None):
         if is_closed is None:
             return self._conn.execute("SELECT book_id, user_id FROM review")
         else:
             return self._conn.execute("SELECT book_id, user_id FROM review WHERE is_closed = ?", (is_closed, ))
+
+    def update_specific(self, user_id, content):
+        self._conn.execute("UPDATE review SET content = (?) WHERE user_id = (?) AND is_closed = 0", (content, user_id))
 
 
 class UserLibrary:
@@ -43,6 +46,10 @@ class UserLibrary:
         return self._conn.execute('INSERT INTO user (user_id, user_name) values (?, ?)', (user_id, "User"))
 
 
+def get_connection():
+    return sl.connect("application.db")
+
+
 def with_connection(func):
     def wrapper(*args):
         conn = get_connection()
@@ -53,8 +60,8 @@ def with_connection(func):
     return wrapper
 
 
-def database_init():
-    con = sl.connect("application.db")
+@with_connection
+def database_init(con):
     con.execute("""CREATE TABLE user (
         user_id INTEGER PRIMARY KEY,
         user_name TEXT DEFAULT User,
@@ -75,10 +82,16 @@ def database_init():
         approved BOOL DEFAULT False
         );""")
     con.execute("INSERT INTO book (book_name, author_id) values (?, ?)", ("Над пропастью во ржи", "NO"))
-    con.commit()
 
 
 # database_init()
+
+
+@with_connection
+def init_user(con, chat_id):
+    if chat_id not in UserLibrary(con).ids():
+        print("Added")
+        con.execute('INSERT INTO user (user_id, user_name) values (?, ?)', (chat_id, "User"))
 
 
 TOKEN = "5880785142:AAEU12-MT3jdVPk6M5reRQvEIFG3-QOABtk"
@@ -88,13 +101,6 @@ bot = telebot.TeleBot(token=TOKEN)
 @bot.message_handler(commands=["start"])  # This is a start module
 def start(message):
     init_user(message.chat.id)
-
-
-@with_connection
-def init_user(con, chat_id):
-    if chat_id not in UserLibrary(con).ids():
-        print("Added")
-        con.execute('INSERT INTO user (user_id, user_name) values (?, ?)', (chat_id, "User"))
 
 
 @bot.message_handler(commands=["force"])  # This is a forced mailing module for debug
@@ -112,8 +118,35 @@ def book_add(message):
 """
 
 
-def get_connection():
-    return sl.connect("application.db")
+@bot.callback_query_handler(func=lambda call: True)
+@with_connection
+def callback_operating(con, call):
+    library = ReviewLibrary(con)
+    callback = call.data
+    chat_id = call.message.chat.id
+    if callback not in BookLibrary(con).get_ids():
+        if (callback, chat_id) not in library.get_ids():
+            library.add(chat_id, callback)
+            print(f"Review added ids:{callback, chat_id}")
+            ans = bot.send_message(chat_id, "Напишите вашу рецензию следующим сообщением")
+            bot.register_next_step_handler(ans, operate_review)
+
+
+@with_connection
+def operate_review(con, message):
+    chat_id = message.chat.id
+    text = message.text
+    library = ReviewLibrary(con)
+    library.update_specific(chat_id, text)
+    print("Review content added, data:", (chat_id, text))
+
+
+def mailing_check():
+    schedule.every().saturday.at('19:00').do(mailing_send)
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
+        print('OK')
 
 
 @with_connection
@@ -131,25 +164,6 @@ def mailing_send(con):  # Mailing module
             button1 = types.InlineKeyboardButton(text=f"{book[1]}", callback_data=book[0])
             keyboard.add(button1)
         bot.send_message(user_info, "Выберите книгу", reply_markup=keyboard)
-
-
-@bot.callback_query_handler(func=lambda call: True)
-@with_connection
-def callback_operating(con, call):
-    library = ReviewLibrary(con)
-    callback = call.data
-    chat_id = call.message.chat.id
-    if callback not in BookLibrary(con).get_ids:
-        if (callback, chat_id) not in library.get_ids():
-            pass
-
-
-def mailing_check():
-    schedule.every().saturday.at('19:00').do(mailing_send)
-    while True:
-        schedule.run_pending()
-        time.sleep(1)
-        print('OK')
 
 
 remind_thread = Thread(target=mailing_check)
