@@ -12,7 +12,10 @@ class BookLibrary:
         self._conn = conn
 
     def get_ids(self):
-        return self._conn.execute("SELECT book_id FROM book")
+        return [x[0] for x in self._conn.execute("SELECT book_id FROM book")]
+
+    def get_content(self):
+        return [book for book in self._conn.execute("SELECT book_id, book_name FROM book")]
 
 
 class ReviewLibrary:
@@ -29,6 +32,7 @@ class ReviewLibrary:
             return self._conn.execute("SELECT book_id, user_id FROM review WHERE is_closed = ?", (is_closed, ))
 
     def update_specific(self, user_id, content):
+
         self._conn.execute("UPDATE review SET content = (?) WHERE user_id = (?) AND is_closed = 0", (content, user_id))
 
 
@@ -36,7 +40,7 @@ class UserLibrary:
     def __init__(self, conn):
         self._conn = conn
 
-    def ids(self, is_banned=None):
+    def get_ids(self, is_banned=None):
         if is_banned is None:
             return [x[0] for x in self._conn.execute("SELECT user_id FROM user")]
         else:
@@ -84,12 +88,12 @@ def database_init(con):
     con.execute("INSERT INTO book (book_name, author_id) values (?, ?)", ("Над пропастью во ржи", "NO"))
 
 
-# database_init()
+database_init()
 
 
 @with_connection
 def init_user(con, chat_id):
-    if chat_id not in UserLibrary(con).ids():
+    if chat_id not in UserLibrary(con).get_ids():
         print("Added")
         con.execute('INSERT INTO user (user_id, user_name) values (?, ?)', (chat_id, "User"))
 
@@ -124,7 +128,9 @@ def callback_operating(con, call):
     library = ReviewLibrary(con)
     callback = call.data
     chat_id = call.message.chat.id
-    if callback not in BookLibrary(con).get_ids():
+    print(callback, BookLibrary(con).get_ids())
+    if callback in BookLibrary(con).get_ids():
+        print("="*100)
         if (callback, chat_id) not in library.get_ids():
             library.add(chat_id, callback)
             print(f"Review added ids:{callback, chat_id}")
@@ -152,8 +158,8 @@ def mailing_check():
 @with_connection
 def mailing_send(con):  # Mailing module
     library = UserLibrary(con)
-    users_data = library.ids(is_banned=False)
-    books_data = [book for book in con.execute("SELECT book_id, book_name FROM book")]
+    users_data = library.get_ids(is_banned=False)
+    books_data = BookLibrary(con).get_content()
     for user_info in users_data:
         keyboard = types.InlineKeyboardMarkup()
         chosen_books = set()
