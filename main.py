@@ -25,6 +25,12 @@ class ReviewLibrary:
     def add(self, user_id, book_id):
         self._conn.execute('INSERT INTO review (user_id, book_id) values (?, ?)', (user_id, book_id))
 
+    def open(self, user_id, book_id):
+        self._conn.execute('UPDATE review SET is_closed = 0 WHERE user_id = (?) AND book_id = (?)', (user_id, book_id))
+
+    def close(self, user_id):
+        self._conn.execute('UPDATE review SET is_closed = 1 WHERE user_id = (?) AND is_closed = 0', (user_id, ))
+
     def get_ids(self, is_closed=None):
         if is_closed is None:
             return self._conn.execute("SELECT book_id, user_id FROM review")
@@ -32,7 +38,6 @@ class ReviewLibrary:
             return self._conn.execute("SELECT book_id, user_id FROM review WHERE is_closed = ?", (is_closed, ))
 
     def update_specific(self, user_id, content):
-
         self._conn.execute("UPDATE review SET content = (?) WHERE user_id = (?) AND is_closed = 0", (content, user_id))
 
 
@@ -88,7 +93,7 @@ def database_init(con):
     con.execute("INSERT INTO book (book_name, author_id) values (?, ?)", ("Над пропастью во ржи", "NO"))
 
 
-database_init()
+# database_init()
 
 
 @with_connection
@@ -114,28 +119,30 @@ def forced_mailing(message):
 
 # Blacklist mode needed here
 
-"""
+
 @bot.message_handler(commands=["add-book"])
 def book_add(message):
     con = sl.connect("application.db")
     chat_id = message.chat.id
-"""
+# You should finish this already
 
 
 @bot.callback_query_handler(func=lambda call: True)
 @with_connection
 def callback_operating(con, call):
     library = ReviewLibrary(con)
-    callback = call.data
+    callback = int(call.data)
     chat_id = call.message.chat.id
-    print(callback, BookLibrary(con).get_ids())
     if callback in BookLibrary(con).get_ids():
-        print("="*100)
         if (callback, chat_id) not in library.get_ids():
             library.add(chat_id, callback)
             print(f"Review added ids:{callback, chat_id}")
-            ans = bot.send_message(chat_id, "Напишите вашу рецензию следующим сообщением")
-            bot.register_next_step_handler(ans, operate_review)
+            ans = bot.send_message(chat_id, "Добавление рецензии\nНапишите вашу рецензию следующим сообщением")
+        else:
+            library.open(chat_id, callback)
+            print(f"Review update request ids: {callback, chat_id}")
+            ans = bot.send_message(chat_id, "Обновление рецензии\nНапишите вашу рецензию следующим сообщением")
+        bot.register_next_step_handler(ans, operate_review)
 
 
 @with_connection
@@ -145,6 +152,7 @@ def operate_review(con, message):
     library = ReviewLibrary(con)
     library.update_specific(chat_id, text)
     print("Review content added, data:", (chat_id, text))
+    library.close(chat_id)
 
 
 def mailing_check():
