@@ -17,6 +17,9 @@ class BookLibrary:
     def get_content(self):
         return [book for book in self._conn.execute("SELECT book_id, book_name FROM book")]
 
+    def add(self, name, author):
+        self._conn.execute('INSERT INTO book (book_name, author_id) values (?, ?)', (name, author))
+
 
 class ReviewLibrary:
     def __init__(self, conn):
@@ -53,6 +56,12 @@ class UserLibrary:
 
     def add_id(self, user_id):
         return self._conn.execute('INSERT INTO user (user_id, user_name) values (?, ?)', (user_id, "User"))
+
+    def get_with_perm(self, perms):
+        request = f'SELECT user_id FROM user WHERE {perms[0]}=1'
+        for perm in range(1, len(perms)):
+            request += f" AND {perms[perm]}=1"
+        return [x[0] for x in self._conn.execute(request)]
 
 
 def get_connection():
@@ -119,17 +128,31 @@ def forced_mailing(message):
 
 # Blacklist mode needed here
 
-
-@bot.message_handler(commands=["add-book"])
-def book_add(message):
-    con = sl.connect("application.db")
+@bot.message_handler(commands=["add-book"])  # This is addition module for books
+@with_connection
+def book_add(con, message):
     chat_id = message.chat.id
-# You should finish this already
+    library = UserLibrary(con)
+    if chat_id in library.get_with_perm(['author_perm']):
+        answer = bot.send_message(chat_id, "Введите название книги")
+        bot.register_next_step_handler(answer, book_confirmed)
+    else:
+        bot.send_message(chat_id, "У вас нет прав.")
 
+
+@with_connection
+def book_confirmed(con, message):
+    library = BookLibrary(con)
+    text = message.text
+    chat_id = message.chat.id
+    library.add(text, chat_id)
+
+
+# You should finish this already
 
 @bot.callback_query_handler(func=lambda call: True)
 @with_connection
-def callback_operating(con, call):
+def callback_operating(con, call):  # This is actually callback operating module
     library = ReviewLibrary(con)
     callback = int(call.data)
     chat_id = call.message.chat.id
