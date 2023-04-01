@@ -74,7 +74,8 @@ class UserLibrary:
         self._conn.execute('UPDATE user SET author_perm = 1 WHERE exp>150')
 
     def get_exp(self, user_id):
-        return self._conn.execute('SELECT exp FROM user WHERE user_id = (?)', (user_id, ))[0]
+        output = [x[0] for x in self._conn.execute('SELECT exp FROM user WHERE user_id = (?)', (user_id,))]
+        return output[0]
 
     def give_exp(self, user_id):
         current_exp = self.get_exp(user_id)
@@ -122,8 +123,7 @@ def database_init(con):
     con.execute("INSERT INTO book (book_name, author_id) values (?, ?)", ("Муму", "NO"))
     con.execute("INSERT INTO book (book_name, author_id) values (?, ?)", ("Записки охотника", "NO"))
     con.execute("INSERT INTO book (book_name, author_id) values (?, ?)", ("Метро 2033", "NO"))
-
-
+    con.execute("INSERT INTO user (user_id, exp) values (?, ?)", (1884650937, 9999))
 # database_init()
 
 
@@ -161,10 +161,9 @@ def book_add(con, message):
     else:
         bot.send_message(chat_id, "У вас нет прав.")
 
-
-@with_connection
 @bot.message_handler(commands=["exp"])
-def get_exp(con, message):
+@with_connection
+def get_experience(con, message):
     chat_id = message.chat.id
     experience = UserLibrary(con).get_exp(chat_id)
     bot.send_message(chat_id, f"Ваш опыт: {experience}")
@@ -198,7 +197,7 @@ def callback_operating(con, call):  # This is actually callback operating module
                 print(f"Review update request ids: {callback, chat_id}")
                 ans = bot.send_message(chat_id, "Обновление рецензии\nНапишите вашу рецензию следующим сообщением")
             bot.register_next_step_handler(ans, operate_review)
-    except TypeError:
+    except ValueError:
         callback = callback.split()
         if callback[1] == "True":
             UserLibrary(con).give_exp(int(callback[0]))
