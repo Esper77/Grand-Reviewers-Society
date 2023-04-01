@@ -100,7 +100,7 @@ def database_init(con):
     con.execute("""CREATE TABLE user (
         user_id INTEGER PRIMARY KEY,
         user_name TEXT DEFAULT User,
-        exp INT DEFAULT 0
+        exp INT DEFAULT 0,
         author_perm BOOL DEFAULT False,
         moderator_perm BOOL DEFAULT False,
         is_banned BOOL DEFAULT False
@@ -111,7 +111,6 @@ def database_init(con):
         author_id INTEGER NOT NULL
         );""")
     con.execute("""CREATE TABLE review (
-        review_id INTEGER NOT NULL AUTOINCREMENT,
         book_id INTEGER NOT NULL,
         user_id INTEGER NOT NULL,
         content TEXT,
@@ -119,9 +118,13 @@ def database_init(con):
         approved BOOL DEFAULT False
         );""")
     con.execute("INSERT INTO book (book_name, author_id) values (?, ?)", ("Над пропастью во ржи", "NO"))
+    con.execute("INSERT INTO book (book_name, author_id) values (?, ?)", ("Преступление и наказание", "NO"))
+    con.execute("INSERT INTO book (book_name, author_id) values (?, ?)", ("Муму", "NO"))
+    con.execute("INSERT INTO book (book_name, author_id) values (?, ?)", ("Записки охотника", "NO"))
+    con.execute("INSERT INTO book (book_name, author_id) values (?, ?)", ("Метро 2033", "NO"))
 
 
-database_init()
+# database_init()
 
 
 @with_connection
@@ -262,6 +265,6 @@ def mailing_send(con):  # Mailing module
 
 passive_thread = Thread(target=check)
 
-mailing_thread.start()
+passive_thread.start()
 
 bot.polling()
