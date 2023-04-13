@@ -116,7 +116,7 @@ def database_init(con):
         user_id INTEGER NOT NULL,
         content TEXT,
         is_closed BOOL NOT NULL DEFAULT False,
-        approved BOOL DEFAULT False
+        approved BOOL DEFAULT False 
         );""")
     con.execute("INSERT INTO book (book_name, author_id) values (?, ?)", ("Над пропастью во ржи", "NO"))
     con.execute("INSERT INTO book (book_name, author_id) values (?, ?)", ("Преступление и наказание", "NO"))
@@ -161,6 +161,7 @@ def book_add(con, message):
     else:
         bot.send_message(chat_id, "У вас нет прав.")
 
+
 @bot.message_handler(commands=["exp"])
 @with_connection
 def get_experience(con, message):
@@ -198,13 +199,17 @@ def callback_operating(con, call):  # This is actually callback operating module
                 ans = bot.send_message(chat_id, "Обновление рецензии\nНапишите вашу рецензию следующим сообщением")
             bot.register_next_step_handler(ans, operate_review)
     except ValueError:
+        target_message_id = call.message.message_id
         callback = callback.split()
         if callback[1] == "True":
-            UserLibrary(con).give_exp(int(callback[0]))
+            if callback[0] not in UserLibrary(con).get_ids():
+                UserLibrary(con).give_exp(int(callback[0]))
             ReviewLibrary(con).approve(int(callback[0]))
         else:
             ans = bot.send_message(callback[0], "Ваша рецензия не была принята, попробуйте её пересмотреть")
             bot.register_next_step_handler(ans, operate_review)
+        empty_keyboard = types.InlineKeyboardMarkup()
+        bot.edit_message_reply_markup(chat_id, target_message_id, reply_markup=empty_keyboard)
 
 
 @with_connection
@@ -225,10 +230,10 @@ def approval_send(con, text, chat_id):
     target_chat = choice(library.get_with_perm(['moderator_perm']))
     keyboard = types.InlineKeyboardMarkup()
     button1 = types.InlineKeyboardButton(text=f"Хорошая", callback_data=f"{chat_id} True")
-    keyboard.add(button1)
     button2 = types.InlineKeyboardButton(text=f"Плохая", callback_data=f"{chat_id} False")
-    keyboard.add(button2)
+    keyboard.row(button1, button2)
     bot.send_message(target_chat, "Рецензия на проверку:\n" + text, reply_markup=keyboard)
+
 
 
 def check():
