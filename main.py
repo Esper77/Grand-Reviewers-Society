@@ -40,15 +40,21 @@ class ReviewLibrary:
         else:
             return self._conn.execute("SELECT book_id, user_id FROM review WHERE is_closed = ?", (is_closed, ))
 
-    def update_specific(self, user_id, content):
-        self._conn.execute("UPDATE review SET content = (?) WHERE user_id = (?) AND is_closed = 0", (content, user_id))
+    def update_specific(self, user_id, book_id, content):
+        self._conn.execute("UPDATE review SET content = (?) WHERE user_id = (?) AND book_id", (content, user_id))
+        return self.get_user_id(user_id, book_id)
 
-    def approve(self, user_id):
-        self._conn.execute("UPDATE review SET approved = 1 WHERE user_id = (?) AND approved = 0", (user_id, ))
+    def approve(self, review_id):
+        self._conn.execute("UPDATE review SET approved = 1 WHERE review_id = (?)", (review_id, ))
 
     def get_approval(self, approval=False):
         return [" ".join(x) for x in self._conn.execute("SELECT user_id, book_id FROM review WHERE approved = ?", (approval,))]
 
+    def get_user_id(self, review_id):
+        return (self._conn.execute('SELECT user_id FROM review WHERE review_id = (?)', (review_id,)))[0]
+
+    def get_review_id(self, user_id, book_id):
+        return (self._conn.execute('SELECT review_id FROM review WHERE user_id = (?) and book_id = (?)', (user_id, book_id)))[0]
 
 class UserLibrary:
     def __init__(self, conn):
@@ -112,6 +118,7 @@ def database_init(con):
         author_id INTEGER NOT NULL
         );""")
     con.execute("""CREATE TABLE review (
+        review_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
         book_id INTEGER NOT NULL,
         user_id INTEGER NOT NULL,
         content TEXT,
@@ -124,7 +131,9 @@ def database_init(con):
     con.execute("INSERT INTO book (book_name, author_id) values (?, ?)", ("Записки охотника", "NO"))
     con.execute("INSERT INTO book (book_name, author_id) values (?, ?)", ("Метро 2033", "NO"))
     con.execute("INSERT INTO user (user_id, exp) values (?, ?)", (1884650937, 9999))
-# database_init()
+
+
+database_init()
 
 
 @with_connection
@@ -140,6 +149,7 @@ bot = telebot.TeleBot(token=TOKEN)
 
 @bot.message_handler(commands=["start"])  # This is a start module
 def start(message):
+    bot.send_message(message.chat.id, "Этот бот был создан для ЧЕГО-ТО ВЕЛИКОГО")
     init_user(message.chat.id)
 
 
@@ -201,15 +211,14 @@ def callback_operating(con, call):  # This is actually callback operating module
     except ValueError:
         target_message_id = call.message.message_id
         callback = callback.split()
+        empty_keyboard = types.InlineKeyboardMarkup()
+        bot.edit_message_reply_markup(chat_id, target_message_id, reply_markup=empty_keyboard)
         if callback[1] == "True":
-            if callback[0] not in UserLibrary(con).get_ids():
-                UserLibrary(con).give_exp(int(callback[0]))
+            UserLibrary(con).give_exp(ReviewLibrary(con).get_user_id(int(callback[0])))
             ReviewLibrary(con).approve(int(callback[0]))
         else:
             ans = bot.send_message(callback[0], "Ваша рецензия не была принята, попробуйте её пересмотреть")
             bot.register_next_step_handler(ans, operate_review)
-        empty_keyboard = types.InlineKeyboardMarkup()
-        bot.edit_message_reply_markup(chat_id, target_message_id, reply_markup=empty_keyboard)
 
 
 @with_connection
@@ -217,23 +226,23 @@ def operate_review(con, message):
     chat_id = message.chat.id
     text = message.text
     library = ReviewLibrary(con)
-    library.update_specific(chat_id, text)
+    review_id = library.update_specific(chat_id, text)
     print("Review content added, data:", (chat_id, text))
     library.close(chat_id)
 
-    approval_send(text, chat_id)
+    approval_send(text, review_id)
 
 
 @with_connection
-def approval_send(con, text, chat_id):
+def approval_send(con, text, review_id):
+
     library = UserLibrary(con)
     target_chat = choice(library.get_with_perm(['moderator_perm']))
     keyboard = types.InlineKeyboardMarkup()
-    button1 = types.InlineKeyboardButton(text=f"Хорошая", callback_data=f"{chat_id} True")
-    button2 = types.InlineKeyboardButton(text=f"Плохая", callback_data=f"{chat_id} False")
+    button1 = types.InlineKeyboardButton(text=f"Хорошая", callback_data=f"{review_id} True")
+    button2 = types.InlineKeyboardButton(text=f"Плохая", callback_data=f"{review_id} False")
     keyboard.row(button1, button2)
     bot.send_message(target_chat, "Рецензия на проверку:\n" + text, reply_markup=keyboard)
-
 
 
 def check():
