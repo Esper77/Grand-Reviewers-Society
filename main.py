@@ -27,6 +27,7 @@ class ReviewLibrary:
 
     def add(self, user_id, book_id):
         self._conn.execute('INSERT INTO review (user_id, book_id) values (?, ?)', (user_id, book_id))
+        return self.get_review_id(user_id, book_id)
 
     def open(self, user_id, book_id):
         self._conn.execute('UPDATE review SET is_closed = 0 WHERE user_id = (?) AND book_id = (?)', (user_id, book_id))
@@ -40,9 +41,8 @@ class ReviewLibrary:
         else:
             return self._conn.execute("SELECT book_id, user_id FROM review WHERE is_closed = ?", (is_closed, ))
 
-    def update_specific(self, user_id, book_id, content):
-        self._conn.execute("UPDATE review SET content = (?) WHERE user_id = (?) AND book_id", (content, user_id))
-        return self.get_user_id(user_id, book_id)
+    def update_specific(self, review_id, content):
+        self._conn.execute("UPDATE review SET content = (?) WHERE review_id = (?)", (content, review_id))
 
     def approve(self, review_id):
         self._conn.execute("UPDATE review SET approved = 1 WHERE review_id = (?)", (review_id, ))
@@ -51,10 +51,13 @@ class ReviewLibrary:
         return [" ".join(x) for x in self._conn.execute("SELECT user_id, book_id FROM review WHERE approved = ?", (approval,))]
 
     def get_user_id(self, review_id):
-        return (self._conn.execute('SELECT user_id FROM review WHERE review_id = (?)', (review_id,)))[0]
+        uid = [x for x in self._conn.execute('SELECT user_id FROM review WHERE review_id = (?)', (review_id,))]
+        return uid[0][0]
 
     def get_review_id(self, user_id, book_id):
-        return (self._conn.execute('SELECT review_id FROM review WHERE user_id = (?) and book_id = (?)', (user_id, book_id)))[0]
+        rid = [x for x in self._conn.execute('SELECT review_id FROM review WHERE user_id = (?) and book_id = (?)', (user_id, book_id))]
+        return rid[0][0]
+
 
 class UserLibrary:
     def __init__(self, conn):
@@ -199,6 +202,7 @@ def callback_operating(con, call):  # This is actually callback operating module
     try:
         if int(callback) in BookLibrary(con).get_ids():
             callback = int(callback)
+            review_id = ReviewLibrary(con).add(chat_id, callback)
             if (callback, chat_id) not in library.get_ids():
                 library.add(chat_id, callback)
                 print(f"Review added ids:{callback, chat_id}")
@@ -207,7 +211,7 @@ def callback_operating(con, call):  # This is actually callback operating module
                 library.open(chat_id, callback)
                 print(f"Review update request ids: {callback, chat_id}")
                 ans = bot.send_message(chat_id, "Обновление рецензии\nНапишите вашу рецензию следующим сообщением")
-            bot.register_next_step_handler(ans, operate_review)
+            bot.register_next_step_handler(ans, lambda message: operate_review(message, review_id))
     except ValueError:
         target_message_id = call.message.message_id
         callback = callback.split()
@@ -217,16 +221,16 @@ def callback_operating(con, call):  # This is actually callback operating module
             UserLibrary(con).give_exp(ReviewLibrary(con).get_user_id(int(callback[0])))
             ReviewLibrary(con).approve(int(callback[0]))
         else:
-            ans = bot.send_message(callback[0], "Ваша рецензия не была принята, попробуйте её пересмотреть")
-            bot.register_next_step_handler(ans, operate_review)
+            ans = bot.send_message(ReviewLibrary(con).get_user_id(callback[0]), "Ваша рецензия не была принята, попробуйте её пересмотреть")
+            bot.register_next_step_handler(ans, lambda message: operate_review(message, callback[0]))
 
 
 @with_connection
-def operate_review(con, message):
+def operate_review(con, message, review_id):
     chat_id = message.chat.id
     text = message.text
     library = ReviewLibrary(con)
-    review_id = library.update_specific(chat_id, text)
+    library.update_specific(review_id, text)
     print("Review content added, data:", (chat_id, text))
     library.close(chat_id)
 
