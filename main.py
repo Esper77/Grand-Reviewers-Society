@@ -79,8 +79,8 @@ class UserLibrary:
         return [x[0] for x in self._conn.execute(request)]
 
     def perm_grant(self):
-        self._conn.execute('UPDATE user SET moderator_perm = 1 WHERE exp>100')
-        self._conn.execute('UPDATE user SET author_perm = 1 WHERE exp>150')
+        self._conn.execute('UPDATE user SET moderator_perm = 1 WHERE exp>50')
+        self._conn.execute('UPDATE user SET author_perm = 1 WHERE exp>30')
 
     def get_exp(self, user_id):
         output = [x[0] for x in self._conn.execute('SELECT exp FROM user WHERE user_id = (?)', (user_id,))]
@@ -150,9 +150,10 @@ TOKEN = "5880785142:AAEU12-MT3jdVPk6M5reRQvEIFG3-QOABtk"
 bot = telebot.TeleBot(token=TOKEN)
 
 
-@bot.message_handler(commands=["start"])  # This is a start module
+@bot.message_handler(commands=["start", "help"])  # This is a start module
 def start(message):
-    bot.send_message(message.chat.id, "Этот бот был создан для ЧЕГО-ТО ВЕЛИКОГО")
+    bot.send_message(message.chat.id, "Этот бот был создан для тренировки написания рецензий, их обмена и обмена книг. Чтобы получить список комманд напишите /commands")
+
     init_user(message.chat.id)
 
 
@@ -163,7 +164,7 @@ def forced_mailing(message):
 
 # Blacklist mode needed here
 
-@bot.message_handler(commands=["add-book"])  # This is addition module for books
+@bot.message_handler(commands=["addbook"])  # This is addition module for books
 @with_connection
 def book_add(con, message):
     chat_id = message.chat.id
