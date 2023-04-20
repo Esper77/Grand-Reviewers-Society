@@ -157,6 +157,17 @@ def start(message):
     init_user(message.chat.id)
 
 
+@bot.message_handler(commands=['commands'])
+def commands(message):
+    bot.send_message(message.chat.id, """/help - Инфо о боте
+    /addbook - добавить книгу (от 30 опыта)
+    /exp - посмотреть свой опыт
+    /leaderboard - вывести топ-10 и своё место в топе""")
+
+@bot.message_handler(commands=['leaderboard'])
+def lb(message):
+    pass
+
 @bot.message_handler(commands=["force"])  # This is a forced mailing module for debug
 def forced_mailing(message):
     mailing_send()
@@ -222,8 +233,9 @@ def callback_operating(con, call):  # This is actually callback operating module
             UserLibrary(con).give_exp(ReviewLibrary(con).get_user_id(int(callback[0])))
             ReviewLibrary(con).approve(int(callback[0]))
         else:
-            ans = bot.send_message(ReviewLibrary(con).get_user_id(callback[0]), "Ваша рецензия не была принята, попробуйте её пересмотреть")
-            bot.register_next_step_handler(ans, lambda message: operate_review(message, callback[0]))
+            keyboard = types.InlineKeyboardMarkup()
+            keyboard.add(types.InlineKeyboardButton(text='Обновить рецензию', callback_data=ReviewLibrary(con).get_ids()[0]))
+            ans = bot.send_message(ReviewLibrary(con).get_user_id(callback[0]), "Ваша рецензия не была принята, попробуйте её пересмотреть", reply_markup=keyboard)
 
 
 @with_connection
