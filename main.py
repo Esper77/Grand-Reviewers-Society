@@ -142,10 +142,10 @@ def database_init(con):
     con.execute("INSERT INTO book (book_name, author_id) values (?, ?)", ("Муму", "NO"))
     con.execute("INSERT INTO book (book_name, author_id) values (?, ?)", ("Записки охотника", "NO"))
     con.execute("INSERT INTO book (book_name, author_id) values (?, ?)", ("Метро 2033", "NO"))
-    con.execute("INSERT INTO user (user_id, exp) values (?, ?)", (1884650937, 9999))
+    con.execute("INSERT INTO user (user_id, exp) values (?, ?)", (1884650937, 30))
 
 
-# database_init()
+database_init()
 
 
 @with_connection
