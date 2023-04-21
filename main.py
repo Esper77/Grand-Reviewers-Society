@@ -90,6 +90,12 @@ class UserLibrary:
         current_exp = self.get_exp(user_id)
         return self._conn.execute('UPDATE user SET exp = (?) WHERE user_id = (?)', (current_exp + 10, user_id))
 
+    def get_all_exp(self):
+        return self._conn.execute('SELECT user_id, exp, user_id FROM user')
+
+    def name_update(self, user_id, username):
+        self._conn.execute('UPDATE user SET user_name = (?) WHERE user_id = (?)', (user_id, username))
+
 
 def get_connection():
     return sl.connect("application.db")
@@ -164,9 +170,24 @@ def commands(message):
     /exp - посмотреть свой опыт
     /leaderboard - вывести топ-10 и своё место в топе""")
 
+
+@with_connection
 @bot.message_handler(commands=['leaderboard'])
-def lb(message):
-    pass
+def lb(con, message):
+    chat_id = message.chat.id
+    lb = UserLibrary(con).get_all_exp().sort(key=lambda x: x[1], reverse=True)
+    pos = [x[0] for x in lb].index(chat_id)
+    text = "Топ-5\n"
+    try:
+        for x in range(5):
+            text += f"{x+1} место. {lb[x][2]}, {lb[x][1]} опыта\n"
+    finally:
+        text += f"Ваша позиция: {pos + 1}"
+        bot.send_message(chat_id, text)
+
+
+@with_connection
+@bot.message_handler(commands=[""])
 
 @bot.message_handler(commands=["force"])  # This is a forced mailing module for debug
 def forced_mailing(message):
