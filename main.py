@@ -63,6 +63,9 @@ class UserLibrary:
     def __init__(self, conn):
         self._conn = conn
 
+    def change_user_name(self, user_id, user_name):
+        self._conn.execute("UPDATE user SET user_name = (?) WHERE user_id = (?)", (user_name, user_id))
+
     def get_ids(self, is_banned=None):
         if is_banned is None:
             return [x[0] for x in self._conn.execute("SELECT user_id FROM user")]
@@ -142,7 +145,7 @@ def database_init(con):
     con.execute("INSERT INTO user (user_id, exp) values (?, ?)", (1884650937, 9999))
 
 
-database_init()
+# database_init()
 
 
 @with_connection
@@ -158,7 +161,7 @@ bot = telebot.TeleBot(token=TOKEN)
 
 @bot.message_handler(commands=["start", "help"])  # This is a start module
 def start(message):
-    bot.send_message(message.chat.id, "Этот бот был создан для тренировки написания рецензий, их обмена и обмена книг. Чтобы получить список комманд напишите /commands")
+    bot.send_message(message.chat.id, "Этот бот был создан для тренировки написания рецензий, их обмена и обмена книг. Чтобы получить список команд напишите /commands")
 
     init_user(message.chat.id)
 
@@ -168,12 +171,13 @@ def commands(message):
     bot.send_message(message.chat.id, """/help - Инфо о боте
     /addbook - добавить книгу (от 30 опыта)
     /exp - посмотреть свой опыт
-    /leaderboard - вывести топ-10 и своё место в топе""")
+    /leaderboard - вывести топ-5 и своё место в топе
+    /rename Поменять свой ник""")
 
 
 @with_connection
 @bot.message_handler(commands=['leaderboard'])
-def lb(con, message):
+def leaderboard(con, message):
     chat_id = message.chat.id
     lb = UserLibrary(con).get_all_exp().sort(key=lambda x: x[1], reverse=True)
     pos = [x[0] for x in lb].index(chat_id)
@@ -186,8 +190,17 @@ def lb(con, message):
         bot.send_message(chat_id, text)
 
 
+@bot.message_handler(commands=["rename"])
+def rename(message):
+    ans = bot.send_message(message.chat.id, "Введите свой новый ник")
+    bot.register_next_step_handler(ans, operate_rename_query)
+
+
 @with_connection
-@bot.message_handler(commands=[""])
+def operate_rename_query(con, message):
+    UserLibrary(con).change_user_name(message.chat.id, message.text)
+    bot.send_message(message.chat.id, "Никнейм обновлён")
+
 
 @bot.message_handler(commands=["force"])  # This is a forced mailing module for debug
 def forced_mailing(message):
@@ -240,11 +253,12 @@ def callback_operating(con, call):  # This is actually callback operating module
                 library.add(chat_id, callback)
                 print(f"Review added ids:{callback, chat_id}")
                 ans = bot.send_message(chat_id, "Добавление рецензии\nНапишите вашу рецензию следующим сообщением")
-            else:
+                bot.register_next_step_handler(ans, lambda message: operate_review(message, review_id))
+            elif call.message.chat.id not in [x[1] for x in library.get_ids(is_closed=False)]:
                 library.open(chat_id, callback)
                 print(f"Review update request ids: {callback, chat_id}")
                 ans = bot.send_message(chat_id, "Обновление рецензии\nНапишите вашу рецензию следующим сообщением")
-            bot.register_next_step_handler(ans, lambda message: operate_review(message, review_id))
+                bot.register_next_step_handler(ans, lambda message: operate_review(message, review_id))
     except ValueError:
         target_message_id = call.message.message_id
         callback = callback.split()
