@@ -82,8 +82,8 @@ class UserLibrary:
         return [x[0] for x in self._conn.execute(request)]
 
     def perm_grant(self):
-        self._conn.execute('UPDATE user SET moderator_perm = 1 WHERE exp>50')
-        self._conn.execute('UPDATE user SET author_perm = 1 WHERE exp>30')
+        self._conn.execute('UPDATE user SET moderator_perm = 1 WHERE exp>19')
+        self._conn.execute('UPDATE user SET author_perm = 1 WHERE exp>19')
 
     def get_exp(self, user_id):
         output = [x[0] for x in self._conn.execute('SELECT exp FROM user WHERE user_id = (?)', (user_id,))]
@@ -94,7 +94,7 @@ class UserLibrary:
         return self._conn.execute('UPDATE user SET exp = (?) WHERE user_id = (?)', (current_exp + 10, user_id))
 
     def get_all_exp(self):
-        return self._conn.execute('SELECT user_id, exp, user_id FROM user')
+        return self._conn.execute('SELECT user_id, exp, user_name FROM user')
 
     def name_update(self, user_id, username):
         self._conn.execute('UPDATE user SET user_name = (?) WHERE user_id = (?)', (user_id, username))
@@ -161,7 +161,7 @@ bot = telebot.TeleBot(token=TOKEN)
 
 @bot.message_handler(commands=["start", "help"])  # This is a start module
 def start(message):
-    bot.send_message(message.chat.id, "Этот бот был создан для тренировки написания рецензий, их обмена и обмена книг. Чтобы получить список команд напишите /commands")
+    bot.send_message(message.chat.id, "Этот бот был создан для тренировки написания рецензий, их обмена и обмена любимыми книгами. Чтобы получить список команд напишите /commands")
 
     init_user(message.chat.id)
 
@@ -175,16 +175,19 @@ def commands(message):
     /rename Поменять свой ник""")
 
 
-@with_connection
 @bot.message_handler(commands=['leaderboard'])
+@with_connection
 def leaderboard(con, message):
     chat_id = message.chat.id
-    lb = UserLibrary(con).get_all_exp().sort(key=lambda x: x[1], reverse=True)
+    lb = [x for x in UserLibrary(con).get_all_exp()]
+    lb.sort(key=lambda x: x[1], reverse=True)
     pos = [x[0] for x in lb].index(chat_id)
     text = "Топ-5\n"
     try:
         for x in range(5):
             text += f"{x+1} место. {lb[x][2]}, {lb[x][1]} опыта\n"
+    except IndexError:
+        pass
     finally:
         text += f"Ваша позиция: {pos + 1}"
         bot.send_message(chat_id, text)
@@ -248,17 +251,22 @@ def callback_operating(con, call):  # This is actually callback operating module
     try:
         if int(callback) in BookLibrary(con).get_ids():
             callback = int(callback)
-            review_id = ReviewLibrary(con).add(chat_id, callback)
-            if (callback, chat_id) not in library.get_ids():
+            ans = None
+            if (callback, chat_id) not in library.get_ids() and chat_id not in [x[1] for x in library.get_ids(is_closed=False)]:
                 library.add(chat_id, callback)
                 print(f"Review added ids:{callback, chat_id}")
                 ans = bot.send_message(chat_id, "Добавление рецензии\nНапишите вашу рецензию следующим сообщением")
-                bot.register_next_step_handler(ans, lambda message: operate_review(message, review_id))
-            elif call.message.chat.id not in [x[1] for x in library.get_ids(is_closed=False)]:
+            elif chat_id not in [x[1] for x in library.get_ids(is_closed=False)]:
                 library.open(chat_id, callback)
                 print(f"Review update request ids: {callback, chat_id}")
                 ans = bot.send_message(chat_id, "Обновление рецензии\nНапишите вашу рецензию следующим сообщением")
+            try:
+                review_id = library.get_review_id(chat_id, callback)
                 bot.register_next_step_handler(ans, lambda message: operate_review(message, review_id))
+            except IndexError:
+                pass
+            except AttributeError:
+                pass
     except ValueError:
         target_message_id = call.message.message_id
         callback = callback.split()
@@ -269,8 +277,9 @@ def callback_operating(con, call):  # This is actually callback operating module
             ReviewLibrary(con).approve(int(callback[0]))
         else:
             keyboard = types.InlineKeyboardMarkup()
-            keyboard.add(types.InlineKeyboardButton(text='Обновить рецензию', callback_data=ReviewLibrary(con).get_ids()[0]))
-            ans = bot.send_message(ReviewLibrary(con).get_user_id(callback[0]), "Ваша рецензия не была принята, попробуйте её пересмотреть", reply_markup=keyboard)
+            print([x for x in ReviewLibrary(con).get_ids()][0])
+            keyboard.add(types.InlineKeyboardButton(text='Обновить рецензию', callback_data=[x for x in ReviewLibrary(con).get_ids()][0][0]))
+            bot.send_message(ReviewLibrary(con).get_user_id(callback[0]), "Ваша рецензия не была принята, попробуйте её пересмотреть", reply_markup=keyboard)
 
 
 @with_connection
